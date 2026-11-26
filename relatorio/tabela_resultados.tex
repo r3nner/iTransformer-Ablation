@@ -1,0 +1,27 @@
+% Arquivo gerado automaticamente pelo notebook iTransformer_ablation.ipynb.
+% Substitua este placeholder pelo tabela_resultados.tex exportado apos rodar QUICK=False no Kaggle.
+\begin{table*}[t]
+\centering
+\caption{Resultados da troca de módulos no iTransformer ($L=96$, $S=96$, média $\pm$ desvio em 3 sementes). Valores com $|\Delta| < \sigma_{\text{base}}$ estão dentro da faixa de ruído do \texttt{baseline}.}
+\label{tab:resultados}
+\scriptsize
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{llcccccccc}
+\toprule
+ & & \multicolumn{4}{c}{\textbf{ETTh1} ($N=7$, $E=256$, $L_{\text{enc}}=2$)} & \multicolumn{4}{c}{\textbf{Weather} ($N=21$, $E=512$, $L_{\text{enc}}=3$)} \\
+\cmidrule(lr){3-6}\cmidrule(lr){7-10}
+\textbf{Variante} & \textbf{Família} & \textbf{MSE} & \textbf{MAE} & \textbf{Params} & \textbf{s/ép (ép)} & \textbf{MSE} & \textbf{MAE} & \textbf{Params} & \textbf{s/ép (ép)} \\
+\midrule
+\texttt{baseline}     & ---             & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} \\
+\texttt{attn\_none}   & Atenção         & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} \\
+\texttt{attn\_linear} & Atenção         & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} \\
+\texttt{norm\_batch}  & Norm.\ repr.    & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} \\
+\texttt{norm\_none}   & Norm.\ repr.    & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} \\
+\texttt{revin\_none}  & Inst.\ norm.    & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} \\
+\texttt{revin\_center}& Inst.\ norm.    & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} \\
+\texttt{ffn\_linear}  & FFN             & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} \\
+\texttt{no\_residual} & Resíduos        & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} \\
+\bottomrule
+\end{tabular}
+\vspace{-4pt}
+\end{table*}

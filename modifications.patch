@@ -1,0 +1,479 @@
+diff --git a/experiments/exp_long_term_forecasting.py b/experiments/exp_long_term_forecasting.py
+index 35170c6..a3e6020 100644
+--- a/experiments/exp_long_term_forecasting.py
++++ b/experiments/exp_long_term_forecasting.py
+@@ -16,6 +16,7 @@ warnings.filterwarnings('ignore')
+ class Exp_Long_Term_Forecast(Exp_Basic):
+     def __init__(self, args):
+         super(Exp_Long_Term_Forecast, self).__init__(args)
++        self.epoch_times = []  # [MOD]
+ 
+     def _build_model(self):
+         model = self.model_dict[self.args.model].Model(self.args).float()
+@@ -82,13 +83,16 @@ class Exp_Long_Term_Forecast(Exp_Basic):
+     def train(self, setting):
+         train_data, train_loader = self._get_data(flag='train')
+         vali_data, vali_loader = self._get_data(flag='val')
+-        test_data, test_loader = self._get_data(flag='test')
++        skip_test = getattr(self.args, 'skip_test_during_train', False)  # [MOD]
++        if not skip_test:  # [MOD]
++            test_data, test_loader = self._get_data(flag='test')  # [MOD]
+ 
+         path = os.path.join(self.args.checkpoints, setting)
+         if not os.path.exists(path):
+             os.makedirs(path)
+ 
+         time_now = time.time()
++        self.epoch_times = []  # [MOD]
+ 
+         train_steps = len(train_loader)
+         early_stopping = EarlyStopping(patience=self.args.patience, verbose=True)
+@@ -162,13 +166,18 @@ class Exp_Long_Term_Forecast(Exp_Basic):
+                     loss.backward()
+                     model_optim.step()
+ 
+-            print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
++            epoch_cost = time.time() - epoch_time  # [MOD]
++            self.epoch_times.append(epoch_cost)  # [MOD]
++            print("Epoch: {} cost time: {}".format(epoch + 1, epoch_cost))  # [MOD]
+             train_loss = np.average(train_loss)
+             vali_loss = self.vali(vali_data, vali_loader, criterion)
+-            test_loss = self.vali(test_data, test_loader, criterion)
+-
+-            print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(
+-                epoch + 1, train_steps, train_loss, vali_loss, test_loss))
++            if not skip_test:  # [MOD]
++                test_loss = self.vali(test_data, test_loader, criterion)  # [MOD]
++                print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(  # [MOD]
++                    epoch + 1, train_steps, train_loss, vali_loss, test_loss))  # [MOD]
++            else:  # [MOD]
++                print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f}".format(  # [MOD]
++                    epoch + 1, train_steps, train_loss, vali_loss))  # [MOD]
+             early_stopping(vali_loss, self.model, path)
+             if early_stopping.early_stop:
+                 print("Early stopping")
+@@ -179,7 +188,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
+             # get_cka(self.args, setting, self.model, train_loader, self.device, epoch)
+ 
+         best_model_path = path + '/' + 'checkpoint.pth'
+-        self.model.load_state_dict(torch.load(best_model_path))
++        self.model.load_state_dict(torch.load(best_model_path, map_location=self.device))  # [MOD]
+ 
+         return self.model
+ 
+@@ -187,12 +196,14 @@ class Exp_Long_Term_Forecast(Exp_Basic):
+         test_data, test_loader = self._get_data(flag='test')
+         if test:
+             print('loading model')
+-            self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
++            self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth'), map_location=self.device))  # [MOD]
+ 
+         preds = []
+         trues = []
++        skip_visual = getattr(self.args, 'skip_visual', False)  # [MOD]
++        skip_save_npy = getattr(self.args, 'skip_save_npy', False)  # [MOD]
+         folder_path = './test_results/' + setting + '/'
+-        if not os.path.exists(folder_path):
++        if not skip_visual and not os.path.exists(folder_path):  # [MOD]
+             os.makedirs(folder_path)
+ 
+         self.model.eval()
+@@ -240,7 +251,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
+ 
+                 preds.append(pred)
+                 trues.append(true)
+-                if i % 20 == 0:
++                if not skip_visual and i % 20 == 0:  # [MOD]
+                     input = batch_x.detach().cpu().numpy()
+                     if test_data.scale and self.args.inverse:
+                         shape = input.shape
+@@ -256,25 +267,25 @@ class Exp_Long_Term_Forecast(Exp_Basic):
+         trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
+         print('test shape:', preds.shape, trues.shape)
+ 
+-        # result save
+-        folder_path = './results/' + setting + '/'
+-        if not os.path.exists(folder_path):
+-            os.makedirs(folder_path)
+-
+         mae, mse, rmse, mape, mspe = metric(preds, trues)
+         print('mse:{}, mae:{}'.format(mse, mae))
+-        f = open("result_long_term_forecast.txt", 'a')
+-        f.write(setting + "  \n")
+-        f.write('mse:{}, mae:{}'.format(mse, mae))
+-        f.write('\n')
+-        f.write('\n')
+-        f.close()
+-
+-        np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
+-        np.save(folder_path + 'pred.npy', preds)
+-        np.save(folder_path + 'true.npy', trues)
+-
+-        return
++        if not skip_save_npy:  # [MOD]
++            # result save  # [MOD]
++            folder_path = './results/' + setting + '/'  # [MOD]
++            if not os.path.exists(folder_path):  # [MOD]
++                os.makedirs(folder_path)  # [MOD]
++            f = open("result_long_term_forecast.txt", 'a')  # [MOD]
++            f.write(setting + "  \n")  # [MOD]
++            f.write('mse:{}, mae:{}'.format(mse, mae))  # [MOD]
++            f.write('\n')  # [MOD]
++            f.write('\n')  # [MOD]
++            f.close()  # [MOD]
++
++            np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))  # [MOD]
++            np.save(folder_path + 'pred.npy', preds)  # [MOD]
++            np.save(folder_path + 'true.npy', trues)  # [MOD]
++
++        return float(mse), float(mae)  # [MOD]
+ 
+ 
+     def predict(self, setting, load=False):
+diff --git a/layers/Ablation.py b/layers/Ablation.py
+new file mode 100644
+index 0000000..598c0e2
+--- /dev/null
++++ b/layers/Ablation.py
+@@ -0,0 +1,112 @@
++# [MOD] New module implementing ablation components for iTransformer
++import torch  # [MOD]
++import torch.nn as nn  # [MOD]
++import torch.nn.functional as F  # [MOD]
++
++
++class TokenBatchNorm(nn.Module):  # [MOD]
++    """Applies BatchNorm1d(d_model) across all (B * N) variate tokens."""  # [MOD]
++
++    def __init__(self, d_model):  # [MOD]
++        super(TokenBatchNorm, self).__init__()  # [MOD]
++        self.bn = nn.BatchNorm1d(d_model)  # [MOD]
++
++    def forward(self, x):  # [MOD]
++        # x: [B, N, E] -> [B * N, E] -> [B, N, E]  # [MOD]
++        B, N, E = x.shape  # [MOD]
++        x = self.bn(x.reshape(B * N, E))  # [MOD]
++        return x.reshape(B, N, E)  # [MOD]
++
++
++def make_norm(norm_type, d_model):  # [MOD]
++    """Factory for normalization layers: layer, batch, or none."""  # [MOD]
++    if norm_type == "layer":  # [MOD]
++        return nn.LayerNorm(d_model)  # [MOD]
++    elif norm_type == "batch":  # [MOD]
++        return TokenBatchNorm(d_model)  # [MOD]
++    elif norm_type == "none":  # [MOD]
++        return nn.Identity()  # [MOD]
++    else:  # [MOD]
++        raise ValueError(f"Unsupported norm_type: {norm_type}")  # [MOD]
++
++
++class LinearTokenMixer(nn.Module):  # [MOD]
++    """Static linear token mixing (MLP-Mixer style): out = W_o * M * (X W_v).  # [MOD]
++
++    M in R^{N x N} is learned and input-independent.  # [MOD]
++    Matches AttentionLayer forward signature: (queries, keys, values, attn_mask, tau, delta) -> (out, None).  # [MOD]
++    """  # [MOD]
++
++    def __init__(self, n_tokens, d_model):  # [MOD]
++        super(LinearTokenMixer, self).__init__()  # [MOD]
++        self.n_tokens = n_tokens  # [MOD]
++        self.value_projection = nn.Linear(d_model, d_model)  # [MOD]
++        self.token_mix = nn.Linear(n_tokens, n_tokens, bias=False)  # [MOD]
++        self.out_projection = nn.Linear(d_model, d_model)  # [MOD]
++
++    def forward(self, queries, keys, values, attn_mask=None, tau=None, delta=None):  # [MOD]
++        # values: [B, N, E]  # [MOD]
++        B, N, E = values.shape  # [MOD]
++        if N != self.n_tokens:  # [MOD]
++            raise ValueError(  # [MOD]
++                f"LinearTokenMixer expected {self.n_tokens} tokens, got {N}."  # [MOD]
++            )  # [MOD]
++        v = self.value_projection(values)  # [B, N, E]  # [MOD]
++        mixed = self.token_mix(v.transpose(1, 2)).transpose(1, 2)  # [B, N, E]  # [MOD]
++        out = self.out_projection(mixed)  # [B, N, E]  # [MOD]
++        return out, None  # [MOD]
++
++
++class AblationEncoderLayer(nn.Module):  # [MOD]
++    """Configurable EncoderLayer preserving exact parameter creation order of EncoderLayer in baseline mode."""  # [MOD]
++
++    def __init__(  # [MOD]
++        self,  # [MOD]
++        attention,  # [MOD]
++        d_model,  # [MOD]
++        d_ff=None,  # [MOD]
++        dropout=0.1,  # [MOD]
++        activation="relu",  # [MOD]
++        norm_type="layer",  # [MOD]
++        ffn_type="mlp",  # [MOD]
++        residual=True,  # [MOD]
++    ):  # [MOD]
++        super(AblationEncoderLayer, self).__init__()  # [MOD]
++        d_ff = d_ff or 4 * d_model  # [MOD]
++        # Preserve exact initialization order: attention, conv1/conv2 (or linear), norm1, norm2  # [MOD]
++        self.attention = attention  # [MOD]
++        self.ffn_type = ffn_type  # [MOD]
++        self.residual = bool(residual)  # [MOD]
++        if ffn_type == "mlp":  # [MOD]
++            self.conv1 = nn.Conv1d(in_channels=d_model, out_channels=d_ff, kernel_size=1)  # [MOD]
++            self.conv2 = nn.Conv1d(in_channels=d_ff, out_channels=d_model, kernel_size=1)  # [MOD]
++        elif ffn_type == "linear":  # [MOD]
++            self.ffn_linear = nn.Linear(d_model, d_model)  # [MOD]
++        else:  # [MOD]
++            raise ValueError(f"Unsupported ffn_type: {ffn_type}")  # [MOD]
++        self.norm1 = make_norm(norm_type, d_model)  # [MOD]
++        self.norm2 = make_norm(norm_type, d_model)  # [MOD]
++        self.dropout = nn.Dropout(dropout)  # [MOD]
++        self.activation = F.relu if activation == "relu" else F.gelu  # [MOD]
++
++    def forward(self, x, attn_mask=None, tau=None, delta=None):  # [MOD]
++        if self.attention is not None:  # [MOD]
++            new_x, attn = self.attention(  # [MOD]
++                x, x, x,  # [MOD]
++                attn_mask=attn_mask,  # [MOD]
++                tau=tau, delta=delta  # [MOD]
++            )  # [MOD]
++            new_x = self.dropout(new_x)  # [MOD]
++            x = x + new_x if self.residual else new_x  # [MOD]
++        else:  # [MOD]
++            attn = None  # [MOD]
++
++        y = x = self.norm1(x)  # [MOD]
++        if self.ffn_type == "mlp":  # [MOD]
++            y = self.dropout(self.activation(self.conv1(y.transpose(-1, 1))))  # [MOD]
++            y = self.dropout(self.conv2(y).transpose(-1, 1))  # [MOD]
++        else:  # [MOD]
++            y = self.dropout(self.ffn_linear(y))  # [MOD]
++
++        out = x + y if self.residual else y  # [MOD]
++        return self.norm2(out), attn  # [MOD]
+diff --git a/model/iTransformer.py b/model/iTransformer.py
+index a6627bf..5d9961b 100644
+--- a/model/iTransformer.py
++++ b/model/iTransformer.py
+@@ -4,6 +4,8 @@ import torch.nn.functional as F
+ from layers.Transformer_EncDec import Encoder, EncoderLayer
+ from layers.SelfAttention_Family import FullAttention, AttentionLayer
+ from layers.Embed import DataEmbedding_inverted
++from layers.Ablation import AblationEncoderLayer, LinearTokenMixer, make_norm  # [MOD]
++from utils.timefeatures import time_features_from_frequency_str  # [MOD]
+ import numpy as np
+ 
+ 
+@@ -18,34 +20,61 @@ class Model(nn.Module):
+         self.pred_len = configs.pred_len
+         self.output_attention = configs.output_attention
+         self.use_norm = configs.use_norm
++        self.attn_type = getattr(configs, 'attn_type', 'full')  # [MOD]
++        self.norm_type = getattr(configs, 'norm_type', 'layer')  # [MOD]
++        self.revin = getattr(configs, 'revin', 'full' if self.use_norm else 'none')  # [MOD]
++        if not self.use_norm:  # [MOD]
++            self.revin = 'none'  # [MOD]
++        self.ffn_type = getattr(configs, 'ffn_type', 'mlp')  # [MOD]
++        self.residual = bool(getattr(configs, 'residual', 1))  # [MOD]
+         # Embedding
+         self.enc_embedding = DataEmbedding_inverted(configs.seq_len, configs.d_model, configs.embed, configs.freq,
+                                                     configs.dropout)
+         self.class_strategy = configs.class_strategy
++        # Number of tokens = variates + temporal covariate tokens (when x_mark is provided)  # [MOD]
++        n_time_feats = len(time_features_from_frequency_str(configs.freq))  # [MOD]
++        n_tokens = configs.enc_in + n_time_feats  # [MOD]
++
++        def _build_attention():  # [MOD]
++            if self.attn_type == 'full':  # [MOD]
++                return AttentionLayer(  # [MOD]
++                    FullAttention(False, configs.factor, attention_dropout=configs.dropout,  # [MOD]
++                                  output_attention=configs.output_attention), configs.d_model, configs.n_heads)  # [MOD]
++            elif self.attn_type == 'none':  # [MOD]
++                return None  # [MOD]
++            elif self.attn_type == 'linear':  # [MOD]
++                return LinearTokenMixer(n_tokens, configs.d_model)  # [MOD]
++            else:  # [MOD]
++                raise ValueError(f"Unsupported attn_type: {self.attn_type}")  # [MOD]
++
+         # Encoder-only architecture
+         self.encoder = Encoder(
+             [
+-                EncoderLayer(
+-                    AttentionLayer(
+-                        FullAttention(False, configs.factor, attention_dropout=configs.dropout,
+-                                      output_attention=configs.output_attention), configs.d_model, configs.n_heads),
++                AblationEncoderLayer(  # [MOD]
++                    _build_attention(),  # [MOD]
+                     configs.d_model,
+                     configs.d_ff,
+                     dropout=configs.dropout,
+-                    activation=configs.activation
++                    activation=configs.activation,  # [MOD]
++                    norm_type=self.norm_type,  # [MOD]
++                    ffn_type=self.ffn_type,  # [MOD]
++                    residual=self.residual,  # [MOD]
+                 ) for l in range(configs.e_layers)
+             ],
+-            norm_layer=torch.nn.LayerNorm(configs.d_model)
++            norm_layer=make_norm(self.norm_type, configs.d_model)  # [MOD]
+         )
+         self.projector = nn.Linear(configs.d_model, configs.pred_len, bias=True)
+ 
+     def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
+-        if self.use_norm:
++        if self.revin == 'full':  # [MOD]
+             # Normalization from Non-stationary Transformer
+             means = x_enc.mean(1, keepdim=True).detach()
+             x_enc = x_enc - means
+             stdev = torch.sqrt(torch.var(x_enc, dim=1, keepdim=True, unbiased=False) + 1e-5)
+             x_enc /= stdev
++        elif self.revin == 'center':  # [MOD]
++            means = x_enc.mean(1, keepdim=True).detach()  # [MOD]
++            x_enc = x_enc - means  # [MOD]
+ 
+         _, _, N = x_enc.shape # B L N
+         # B: batch_size;    E: d_model; 
+@@ -63,10 +92,12 @@ class Model(nn.Module):
+         # B N E -> B N S -> B S N 
+         dec_out = self.projector(enc_out).permute(0, 2, 1)[:, :, :N] # filter the covariates
+ 
+-        if self.use_norm:
++        if self.revin == 'full':  # [MOD]
+             # De-Normalization from Non-stationary Transformer
+             dec_out = dec_out * (stdev[:, 0, :].unsqueeze(1).repeat(1, self.pred_len, 1))
+             dec_out = dec_out + (means[:, 0, :].unsqueeze(1).repeat(1, self.pred_len, 1))
++        elif self.revin == 'center':  # [MOD]
++            dec_out = dec_out + (means[:, 0, :].unsqueeze(1).repeat(1, self.pred_len, 1))  # [MOD]
+ 
+         return dec_out, attns
+ 
+diff --git a/run.py b/run.py
+index a50bbdb..eb1694c 100644
+--- a/run.py
++++ b/run.py
+@@ -1,4 +1,7 @@
+ import argparse
++import json  # [MOD]
++import os  # [MOD]
++import shutil  # [MOD]
+ import torch
+ from experiments.exp_long_term_forecasting import Exp_Long_Term_Forecast
+ from experiments.exp_long_term_forecasting_partial import Exp_Long_Term_Forecast_Partial
+@@ -6,11 +9,6 @@ import random
+ import numpy as np
+ 
+ if __name__ == '__main__':
+-    fix_seed = 2023
+-    random.seed(fix_seed)
+-    torch.manual_seed(fix_seed)
+-    np.random.seed(fix_seed)
+-
+     parser = argparse.ArgumentParser(description='iTransformer')
+ 
+     # basic config
+@@ -87,7 +85,29 @@ if __name__ == '__main__':
+     parser.add_argument('--partial_start_index', type=int, default=0, help='the start index of variates for partial training, '
+                                                                            'you can select [partial_start_index, min(enc_in + partial_start_index, N)]')
+ 
++    # Ablation & experiment control  # [MOD]
++    parser.add_argument('--seed', type=int, default=2023, help='random seed')  # [MOD]
++    parser.add_argument('--attn_type', type=str, default='full', choices=['full', 'none', 'linear'], help='attention module type')  # [MOD]
++    parser.add_argument('--norm_type', type=str, default='layer', choices=['layer', 'batch', 'none'], help='normalization type')  # [MOD]
++    parser.add_argument('--revin', type=str, default='full', choices=['full', 'center', 'none'], help='instance normalization mode')  # [MOD]
++    parser.add_argument('--ffn_type', type=str, default='mlp', choices=['mlp', 'linear'], help='FFN block type')  # [MOD]
++    parser.add_argument('--residual', type=int, default=1, choices=[0, 1], help='use residual connections in encoder layer')  # [MOD]
++    parser.add_argument('--variant', type=str, default='baseline', help='ablation variant label')  # [MOD]
++    parser.add_argument('--dataset_name', type=str, default='', help='dataset name for JSONL logging')  # [MOD]
++    parser.add_argument('--results_file', type=str, default='', help='path to JSONL results file')  # [MOD]
++    parser.add_argument('--skip_test_during_train', action='store_true', default=False, help='skip test evaluation at every epoch')  # [MOD]
++    parser.add_argument('--skip_visual', action='store_true', default=False, help='skip saving PDF plots during test')  # [MOD]
++    parser.add_argument('--skip_save_npy', action='store_true', default=False, help='skip saving pred.npy/true.npy during test')  # [MOD]
++    parser.add_argument('--keep_checkpoint', action='store_true', default=False, help='keep checkpoint file after test')  # [MOD]
++
+     args = parser.parse_args()
++    fix_seed = args.seed  # [MOD]
++    random.seed(fix_seed)  # [MOD]
++    torch.manual_seed(fix_seed)  # [MOD]
++    np.random.seed(fix_seed)  # [MOD]
++    if torch.cuda.is_available():  # [MOD]
++        torch.cuda.manual_seed(fix_seed)  # [MOD]
++        torch.cuda.manual_seed_all(fix_seed)  # [MOD]
+     args.use_gpu = True if torch.cuda.is_available() and args.use_gpu else False
+ 
+     if args.use_gpu and args.use_multi_gpu:
+@@ -108,7 +128,7 @@ if __name__ == '__main__':
+     if args.is_training:
+         for ii in range(args.itr):
+             # setting record of experiments
+-            setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(
++            setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}_var{}_s{}'.format(  # [MOD]
+                 args.model_id,
+                 args.model,
+                 args.data,
+@@ -125,20 +145,53 @@ if __name__ == '__main__':
+                 args.embed,
+                 args.distil,
+                 args.des,
+-                args.class_strategy, ii)
++                args.class_strategy, ii, args.variant, args.seed)  # [MOD]
+ 
+             exp = Exp(args)  # set experiments
+             print('>>>>>>>start training : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(setting))
+             exp.train(setting)
+ 
+             print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
+-            exp.test(setting)
++            test_out = exp.test(setting)  # [MOD]
++            mse, mae = test_out if isinstance(test_out, tuple) else (None, None)  # [MOD]
++
++            if args.results_file:  # [MOD]
++                n_params = sum(p.numel() for p in exp.model.parameters() if p.requires_grad)  # [MOD]
++                epoch_times = getattr(exp, 'epoch_times', [])  # [MOD]
++                avg_epoch_time = float(np.mean(epoch_times)) if len(epoch_times) > 0 else 0.0  # [MOD]
++                record = {  # [MOD]
++                    'dataset': args.dataset_name or args.model_id,  # [MOD]
++                    'variant': args.variant,  # [MOD]
++                    'seed': int(args.seed),  # [MOD]
++                    'mse': float(mse) if mse is not None else None,  # [MOD]
++                    'mae': float(mae) if mae is not None else None,  # [MOD]
++                    'n_params': int(n_params),  # [MOD]
++                    'avg_epoch_time': avg_epoch_time,  # [MOD]
++                    'epochs_run': int(len(epoch_times)),  # [MOD]
++                    'attn_type': args.attn_type,  # [MOD]
++                    'norm_type': args.norm_type,  # [MOD]
++                    'revin': args.revin,  # [MOD]
++                    'ffn_type': args.ffn_type,  # [MOD]
++                    'residual': int(args.residual),  # [MOD]
++                    'train_epochs': int(args.train_epochs),  # [MOD]
++                }  # [MOD]
++                res_dir = os.path.dirname(os.path.abspath(args.results_file))  # [MOD]
++                if res_dir:  # [MOD]
++                    os.makedirs(res_dir, exist_ok=True)  # [MOD]
++                with open(args.results_file, 'a', encoding='utf-8') as rf:  # [MOD]
++                    rf.write(json.dumps(record) + '\n')  # [MOD]
+ 
+             if args.do_predict:
+                 print('>>>>>>>predicting : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
+                 exp.predict(setting, True)
+ 
+-            torch.cuda.empty_cache()
++            if not args.keep_checkpoint:  # [MOD]
++                ckpt_dir = os.path.join(args.checkpoints, setting)  # [MOD]
++                if os.path.exists(ckpt_dir):  # [MOD]
++                    shutil.rmtree(ckpt_dir, ignore_errors=True)  # [MOD]
++
++            if torch.cuda.is_available():  # [MOD]
++                torch.cuda.empty_cache()  # [MOD]
+     else:
+         ii = 0
+         setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(
+diff --git a/utils/tools.py b/utils/tools.py
+index c3b922e..b239034 100644
+--- a/utils/tools.py
++++ b/utils/tools.py
+@@ -31,7 +31,7 @@ class EarlyStopping:
+         self.counter = 0
+         self.best_score = None
+         self.early_stop = False
+-        self.val_loss_min = np.Inf
++        self.val_loss_min = np.inf  # [MOD]
+         self.delta = delta
+ 
+     def __call__(self, val_loss, model, path):

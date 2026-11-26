@@ -1,0 +1,23 @@
+# Ambiente local de validação e clone temporário do repositório oficial
+.venv/
+iTransformer/
+ablation_outputs/
+
+# Python / Jupyter
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# LaTeX build artifacts
+*.aux
+*.log
+*.out
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.toc
+*.bbl
+*.blg
+*.nav
+*.snm
+*.vrb

@@ -1,0 +1,126 @@
+\documentclass[conference]{IEEEtran}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{url}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit}
+
+\newcommand{\TODO}[1]{\textcolor{red}{\textbf{[TODO: #1]}}}
+
+\title{Análise Experimental por Troca de Módulos no iTransformer para Previsão de Séries Temporais}
+
+\author{
+\IEEEauthorblockN{André Renner, Andrei Hammacher, Rafael Wagner}
+\IEEEauthorblockA{Universidade Federal de Santa Maria (UFSM)\\
+Disciplina: Aprendizado de Máquina Profundo (Prof.\ Thiago L.\ T.\ da Silveira)}
+}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+O \emph{iTransformer} (ICLR~2024) propõe inverter as dimensões de entrada do Transformer em séries temporais multivariadas, tratando cada série como um \emph{token} e aplicando autoatenção entre variáveis. Neste trabalho, mapeamos os módulos fundamentais da arquitetura e avaliamos experimentalmente o papel de cada componente por meio de 9 configurações (troca/remoção de atenção, normalização de representação, normalização de instância, FFN e conexões residuais) nas bases ETTh1 e Weather ($L=96$, $S=96$, 3 sementes, 54 treinos). \TODO{Resumir em 1--2 frases os principais achados numéricos após a execução completa no Kaggle.}
+\end{abstract}
+
+\section{Introdução}
+Em previsão multivariada de séries temporais, modelos baseados em Transformer tradicionalmente constroem \emph{tokens} temporais (um vetor por instante $t$ agregando todas as $N$ variáveis). Liu et al.~\cite{liu2024itransformer} argumentam que essa formulação mistura variáveis de escalas distintas no mesmo \emph{token} e limita o campo receptivo temporal. O \textbf{iTransformer}~\cite{liu2024itransformer} mantém o codificador Transformer padrão, mas \emph{inverte} a tokenização: cada variável (e cada covariável temporal) ao longo da janela de histórico $L$ torna-se um único \emph{token}.
+
+O objetivo deste trabalho é compreender onde e sobre qual representação atuam os módulos de Aprendizado Profundo no iTransformer e verificar experimentalmente o papel de cada um por \textbf{troca controlada de módulos}, usando o código oficial no \emph{commit} fixado \texttt{c2426e6}.
+
+\section{Mapeamento dos Módulos e Formulação}
+Dado um lote de entrada $X \in \mathbb{R}^{B \times L \times N}$ ($B$: lote, $L$: janela de histórico, $N$: variáveis) e covariáveis temporais $X_{\text{mark}} \in \mathbb{R}^{B \times L \times N_c}$, o fluxo de dados segue a Fig.~\ref{fig:fluxo}.
+
+\begin{figure}[t]
+\centering
+\resizebox{\columnwidth}{!}{%
+\begin{tikzpicture}[
+    node distance=0.28cm and 0.25cm,
+    box/.style={draw, rounded corners=2pt, align=center, font=\scriptsize, inner sep=3.5pt, fill=gray!8},
+    mod/.style={draw, rounded corners=2pt, align=center, font=\scriptsize, inner sep=3.5pt, fill=blue!8},
+    arr/.style={-{Stealth[length=2mm]}, thick}
+]
+\node[box] (in) {$X$\\$B{\times}L{\times}N$};
+\node[mod, right=of in] (revin) {Inst.\ Norm.\\(RevIN)};
+\node[box, right=of revin] (emb) {Embed Inv.\\$B{\times}N_{\text{tok}}{\times}E$};
+\node[mod, right=of emb] (attn) {MHA / Mixer\\($N_{\text{tok}}{\times}N_{\text{tok}}$)};
+\node[mod, below=0.35cm of attn] (ln1) {Add \& Norm$_1$};
+\node[mod, left=of ln1] (ffn) {FFN ($1{\times}1$)\\por \emph{token}};
+\node[mod, left=of ffn] (ln2) {Add \& Norm$_2$};
+\node[box, left=of ln2] (proj) {Norm$_{\text{out}}$ + Proj.\\$B{\times}N{\times}S$};
+\node[mod, below=0.35cm of proj] (denorm) {De-Norm.\\$B{\times}S{\times}N$};
+
+\draw[arr] (in) -- (revin);
+\draw[arr] (revin) -- (emb);
+\draw[arr] (emb) -- (attn);
+\draw[arr] (attn) -- (ln1);
+\draw[arr] (ln1) -- (ffn);
+\draw[arr] (ffn) -- (ln2);
+\draw[arr] (ln2) -- (proj);
+\draw[arr] (proj) -- (denorm);
+\node[draw=blue!50, dashed, fit=(attn)(ln1)(ffn)(ln2), inner sep=3pt, label={[font=\tiny, text=blue!70]above:$\times L_{\text{enc}}$ camadas}] {};
+\end{tikzpicture}%
+}
+\vspace{-4pt}
+\caption{Fluxo de tensores no iTransformer ($B{\times}L{\times}N \to B{\times}N_{\text{tok}}{\times}E \to B{\times}N{\times}S \to B{\times}S{\times}N$). Blocos azuis indicam os módulos alvo da troca controlada.}
+\label{fig:fluxo}
+\vspace{-4pt}
+\end{figure}
+
+\textbf{Normalização de instância (RevIN / Non-stationary):} atua sobre $X$ por série e por janela antes do \emph{embedding}, mitigando deslocamentos de distribuição (não estacionariedade):
+\begin{equation}
+\tilde{X}_{:,n} = \frac{X_{:,n} - \mu_n}{\sigma_n}, \quad \mu_n = \frac{1}{L}\sum_{t=1}^{L} X_{t,n},\; \sigma_n = \sqrt{\mathrm{Var}(X_{:,n}) + \epsilon}.
+\end{equation}
+Na saída, aplica-se a transformação inversa $\hat{Y}_{:,n} = \sigma_n \tilde{Y}_{:,n} + \mu_n$. Os autores adotam essa etapa para desacoplar tendências de nível/escala da dinâmica temporal aprendida pelo codificador.
+
+\textbf{Embedding invertido:} concatena as $N$ séries e $N_c$ covariáveis temporais ($N_{\text{tok}} = N + N_c$, com $N_c=4$ para \texttt{freq='h'}) e projeta linearmente toda a série temporal de comprimento $L$ para dimensão $E=d_{\text{model}}$:
+\begin{equation}
+h_n^{(0)} = W_e \tilde{X}_{:,n} + b_e \in \mathbb{R}^{E}, \quad n \in \{1,\dots,N_{\text{tok}}\}.
+\end{equation}
+
+\textbf{Autoatenção entre variáveis:} em cada camada do codificador, a atenção multi-cabeça opera sobre os $N_{\text{tok}}$ \emph{tokens} de variáveis:
+\begin{equation}
+\mathrm{Attn}(Q,K,V) = \mathrm{softmax}\!\left(\frac{QK^\top}{\sqrt{d_k}}\right)V, \quad QK^\top \in \mathbb{R}^{N_{\text{tok}} \times N_{\text{tok}}}.
+\end{equation}
+Diferentemente do Transformer clássico, o mapa de atenção modela \emph{correlações multivariadas dependentes da entrada} entre séries. Para separar ``misturar variáveis'' de ``misturar de forma dependente da entrada'', testamos também uma mistura linear estática estilo MLP-Mixer: $\mathrm{Mix}(X) = W_o \, M \, (X W_v)$ com $M \in \mathbb{R}^{N_{\text{tok}} \times N_{\text{tok}}}$ aprendida e fixa para todas as entradas.
+
+\textbf{Normalização da representação:} o original usa \emph{LayerNorm} (pós-resíduo em $\mathrm{norm}_1$, $\mathrm{norm}_2$ e $\mathrm{norm}_{\text{out}}$) sobre os $E$ atributos de cada \emph{token} $h_n$, harmonizando representações de séries heterogêneas independentemente do lote. Comparamos com \emph{BatchNorm1d}($E$) sobre os $(B{\cdot}N_{\text{tok}})$ \emph{tokens} e com \emph{Identity}.
+
+\textbf{FFN por \emph{token} e conexões residuais:} aplicada separadamente a cada variável via convoluções $1{\times}1$:
+\begin{equation}
+\mathrm{FFN}(h_n) = W_2\,\mathrm{GELU}(W_1 h_n + b_1) + b_2,
+\end{equation}
+responsável por extrair representações temporais não lineares da série embutida. Dois atalhos residuais ($x + \mathrm{sublayer}(x)$) estabilizam o fluxo de gradientes. Por fim, uma projeção linear $\hat{y}_n = W_p h_n^{(L_{\text{enc}})} + b_p \in \mathbb{R}^{S}$ gera o horizonte $S$ para as $N$ variáveis-alvo (descartando as covariáveis).
+
+\section{Experimentos}
+\textbf{Protocolo:} fixamos $L=96$ e $S=96$ (limitação justificada por tempo de GPU) em duas bases do artigo: \textbf{ETTh1} ($N=7$, $N_{\text{tok}}=11$, $L_{\text{enc}}=2$, $E=d_{\text{ff}}=256$) e \textbf{Weather} ($N=21$, $N_{\text{tok}}=25$, $L_{\text{enc}}=3$, $E=d_{\text{ff}}=512$), mantendo os hiperparâmetros dos scripts oficiais (Adam, $\text{lr}=10^{-4}$, \texttt{type1}, \emph{batch} 32, até 10 épocas, \emph{patience} 3, \emph{dropout} 0,1, 8 cabeças, GELU). Executamos 3 sementes (2021, 2022, 2023) para cada uma das 9 variantes (54 treinos), reportando MSE e MAE no teste (média $\pm$ desvio), número de parâmetros, tempo médio por época e épocas até \emph{early stopping}. Um teste automatizado verificou igualdade numérica exata entre o código original e o modificado em modo \texttt{baseline} com a mesma semente.
+
+\textbf{Baseline vs.\ Artigo:} no artigo original~\cite{liu2024itransformer} (Tabela de resultados completos, $S=96$, valores a confirmar no PDF), o iTransformer reporta \textbf{ETTh1} $\text{MSE}=0{,}386$ / $\text{MAE}=0{,}405$ e \textbf{Weather} $\text{MSE}=0{,}174$ / $\text{MAE}=0{,}214$. Nosso \texttt{baseline} obteve \TODO{ETTh1: MSE $\pm$ dp / MAE $\pm$ dp; Weather: MSE $\pm$ dp / MAE $\pm$ dp}. \TODO{Comentar brevemente a diferença vs.\ artigo: múltiplas seeds, versão de PyTorch/CUDA e ausência de avaliação de teste por época não afetando o early stopping.}
+
+\input{tabela_resultados.tex}
+
+\section{Discussão e Conclusões}
+A Tabela~\ref{tab:resultados} sintetiza os resultados das 9 variantes. Abaixo, avaliamos cada família de módulos à luz das hipóteses levantadas (confrontando com o desvio-padrão do \texttt{baseline} para distinguir ganhos/perdas reais de ruído):
+
+\textbf{Atenção entre variáveis (\texttt{attn\_none}, \texttt{attn\_linear}):} a hipótese central é que a atenção entre variáveis tem maior impacto em \textbf{Weather} ($N=21$, variáveis meteorológicas acopladas) do que em \textbf{ETTh1} ($N=7$). Além disso, comparar \texttt{attn\_linear} com \texttt{attn\_none} e \texttt{baseline} separa o efeito de simplesmente misturar canais do efeito de ponderação dependente da entrada. \TODO{Preencher com os dados: confirmar ou refutar se a queda sem atenção foi maior em Weather que em ETTh1 e se \texttt{attn\_linear} recuperou parte do desempenho com menos parâmetros.}
+
+\textbf{Normalização de instância (\texttt{revin\_none}, \texttt{revin\_center}):} devido à não estacionariedade das séries temporais, espera-se degradação acentuada ao remover a normalização de instância (\texttt{revin\_none}), enquanto \texttt{revin\_center} isola o efeito da remoção de média frente à normalização de variância. \TODO{Preencher com os deltas observados em ETTh1 e Weather.}
+
+\textbf{Normalização da representação (\texttt{norm\_batch}, \texttt{norm\_none}):} enquanto a \emph{LayerNorm} normaliza cada \emph{token} (série) isoladamente, a \emph{BatchNorm1d} sobre $(B{\cdot}N_{\text{tok}})$ mistura estatísticas entre séries e amostras do lote, podendo sofrer discrepância entre treino e teste sob mudança de distribuição. \TODO{Preencher comparando \texttt{norm\_batch} e \texttt{norm\_none} contra o \texttt{baseline}, verificando se houve instabilidade ou piora dentro/fora do ruído.}
+
+\textbf{FFN e conexões residuais (\texttt{ffn\_linear}, \texttt{no\_residual}):} substituir o MLP não linear por uma única projeção linear (\texttt{ffn\_linear}) testa a necessidade de não linearidade na extração temporal por variável; remover os resíduos (\texttt{no\_residual}) avalia o impacto na otimização em profundidade ($L_{\text{enc}}=2$ vs.\ $3$). \TODO{Preencher com a análise dos dados e impacto no número de épocas até early stopping.}
+
+\textbf{Custo computacional:} \TODO{Citar parâmetros treináveis e tempo/época das variantes mais relevantes — ex.: redução de parâmetros em \texttt{attn\_none}, \texttt{attn\_linear} e \texttt{ffn\_linear} versus ganho/perda de tempo por época.}
+
+\textbf{Limitações e conclusão:} o estudo restringe-se ao horizonte $S=96$, 2 bases e 3 sementes devido ao orçamento de GPU, não capturando o comportamento em horizontes longos ($S\in\{192,336,720\}$) nem em bases de altíssima dimensionalidade (como Traffic, $N=862$). Ainda assim, a troca sistemática de módulos permite quantificar quais componentes sustentam o desempenho do iTransformer. \TODO{Fechar com 1--2 frases indicando qual família de módulos se mostrou mais crítica e qual teve menor impacto nos seus resultados.}
+
+\begin{thebibliography}{1}
+\bibitem{liu2024itransformer}
+Y.~Liu, T.~Hu, H.~Zhang, H.~Wu, S.~Wang, L.~Ma, and M.~Long, ``iTransformer: Inverted Transformers Are Effective for Time Series Forecasting,'' in \emph{Proc.\ International Conference on Learning Representations (ICLR)}, 2024. arXiv:2310.06625.
+\end{thebibliography}
+
+\end{document}
