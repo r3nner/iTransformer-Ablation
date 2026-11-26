@@ -1,26 +1,25 @@
-% Arquivo gerado automaticamente pelo notebook iTransformer_ablation.ipynb.
-% Substitua este placeholder pelo tabela_resultados.tex exportado apos rodar QUICK=False no Kaggle.
+% Gerado automaticamente por iTransformer_ablation.ipynb
 \begin{table*}[t]
 \centering
-\caption{Resultados da troca de módulos no iTransformer ($L=96$, $S=96$, média $\pm$ desvio em 3 sementes). Valores com $|\Delta| < \sigma_{\text{base}}$ estão dentro da faixa de ruído do \texttt{baseline}.}
+\caption{Resultados da troca de módulos no iTransformer ($L=96$, $S=96$, média $\pm$ desvio em 3 sementes). $^\dagger$Indica diferença menor que o desvio-padrão do \texttt{baseline} (dentro da faixa de ruído).}
 \label{tab:resultados}
 \scriptsize
-\setlength{\tabcolsep}{3.5pt}
+\setlength{\tabcolsep}{3.2pt}
 \begin{tabular}{llcccccccc}
 \toprule
  & & \multicolumn{4}{c}{\textbf{ETTh1} ($N=7$, $E=256$, $L_{\text{enc}}=2$)} & \multicolumn{4}{c}{\textbf{Weather} ($N=21$, $E=512$, $L_{\text{enc}}=3$)} \\
 \cmidrule(lr){3-6}\cmidrule(lr){7-10}
 \textbf{Variante} & \textbf{Família} & \textbf{MSE} & \textbf{MAE} & \textbf{Params} & \textbf{s/ép (ép)} & \textbf{MSE} & \textbf{MAE} & \textbf{Params} & \textbf{s/ép (ép)} \\
 \midrule
-\texttt{baseline}     & ---             & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} \\
-\texttt{attn\_none}   & Atenção         & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} \\
-\texttt{attn\_linear} & Atenção         & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} \\
-\texttt{norm\_batch}  & Norm.\ repr.    & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} \\
-\texttt{norm\_none}   & Norm.\ repr.    & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} \\
-\texttt{revin\_none}  & Inst.\ norm.    & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} \\
-\texttt{revin\_center}& Inst.\ norm.    & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} \\
-\texttt{ffn\_linear}  & FFN             & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} \\
-\texttt{no\_residual} & Resíduos        & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} & \TODO{--} \\
+\texttt{baseline} & --- & 0.386$\pm$0.001 & 0.405$\pm$0.001 & 842k & 3.7 (8.3) & 0.175$\pm$0.002 & 0.216$\pm$0.002 & 4.83M & 20.5 (6.0) \\
+\texttt{attn\_none} & Atenção & 0.384$\pm$0.000 & 0.399$\pm$0.000 & 315k & 2.5 (10.0) & 0.183$\pm$0.000 & 0.220$\pm$0.000 & 1.68M & 12.0 (10.0) \\
+\texttt{attn\_linear} & Atenção & 0.389$\pm$0.003 & 0.405$\pm$0.001$^\dagger$ & 579k & 3.0 (9.0) & \textbf{0.162$\pm$0.002} & \textbf{0.207$\pm$0.002} & 3.26M & 15.6 (9.0) \\
+\texttt{norm\_batch} & Norm. repr. & 0.391$\pm$0.004 & 0.403$\pm$0.002 & 842k & 4.0 (5.7) & 0.175$\pm$0.001$^\dagger$ & 0.215$\pm$0.001$^\dagger$ & 4.83M & 21.4 (9.0) \\
+\texttt{norm\_none} & Norm. repr. & 0.385$\pm$0.003 & \textbf{0.399$\pm$0.002} & 839k & 3.6 (6.7) & 0.180$\pm$0.001 & 0.220$\pm$0.001 & 4.83M & 19.7 (9.0) \\
+\texttt{revin\_none} & Inst. norm. & 0.404$\pm$0.002 & 0.425$\pm$0.002 & 842k & 3.6 (9.7) & 0.170$\pm$0.006 & 0.232$\pm$0.009 & 4.83M & 20.0 (7.0) \\
+\texttt{revin\_center} & Inst. norm. & \textbf{0.377$\pm$0.000} & 0.402$\pm$0.000 & 842k & 3.7 (9.3) & 0.173$\pm$0.001 & 0.231$\pm$0.002 & 4.83M & 20.3 (8.7) \\
+\texttt{ffn\_linear} & FFN & 0.386$\pm$0.002$^\dagger$ & 0.404$\pm$0.001 & 710k & 3.4 (7.0) & 0.178$\pm$0.001 & 0.219$\pm$0.001 & 4.05M & 18.4 (7.3) \\
+\texttt{no\_residual} & Resíduos & 0.411$\pm$0.002 & 0.422$\pm$0.001 & 842k & 3.7 (9.7) & 0.196$\pm$0.002 & 0.238$\pm$0.002 & 4.83M & 20.5 (10.0) \\
 \bottomrule
 \end{tabular}
 \vspace{-4pt}

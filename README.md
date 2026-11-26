@@ -12,4 +12,4 @@ Trabalho Final da disciplina **Aprendizado de Máquina Profundo** (UFSM — Prof
 - `modifications.patch` — `git diff` completo das alterações aplicadas ao código oficial (todas marcadas com `# [MOD]`).
 - `relatorio/main.tex` e `relatorio/tabela_resultados.tex` — Relatório em formato `IEEEtran` (`conference`, duas colunas, ≤ 2 páginas sem referências), pronto para compilação no Overleaf.
 - `slides_roteiro.md` — Roteiro de 11 slides (10–12 minutos) alinhado à estrutura do relatório.
-- `resultados/` — *(adicionado após conclusão dos 54 treinos em GPU)* `results_full.jsonl`, `summary_results.csv`, `ablation_ETTh1.png` e `ablation_Weather.png`.
+- `resultados/` — Resultados finais dos 54 treinos em GPU Tesla T4 (`results_full.jsonl`, `summary_results.csv`, `ablation_ETTh1.png` e `ablation_Weather.png`).
